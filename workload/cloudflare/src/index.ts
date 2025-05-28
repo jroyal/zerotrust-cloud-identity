@@ -10,9 +10,11 @@
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
+import { Hono } from 'hono';
+const app = new Hono();
+
+app.get('/', (c) => c.text('Hono!'));
 
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
+	fetch: app.fetch,
 } satisfies ExportedHandler<Env>;
