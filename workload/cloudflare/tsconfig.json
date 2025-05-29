@@ -21,8 +21,9 @@
 		/* Enable error reporting in type-checked JavaScript files. */
 		"checkJs": false,
 
+		"outDir": "dist",
 		/* Disable emitting files from a compilation. */
-		"noEmit": true,
+		//"noEmit": true,
 
 		/* Ensure that each file can be safely transpiled without relying on other imports. */
 		"isolatedModules": true,
@@ -41,5 +42,5 @@
 		]
 	},
 	"exclude": ["test"],
-	"include": ["worker-configuration.d.ts", "src/**/*.ts"]
+	"include": ["worker-configuration.d.ts", "src/**/*.ts", "src/**/*.js"]
 }

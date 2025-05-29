@@ -3,6 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
+		"build": "tsc && esbuild dist/index.js --bundle --format=esm --target=es2021 --allow-overwrite=true --outfile=dist/index.js",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
@@ -11,6 +12,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
+		"esbuild": "^0.25.5",
 		"typescript": "^5.5.2",
 		"vitest": "~3.1.4",
 		"wrangler": "^4.17.0"
