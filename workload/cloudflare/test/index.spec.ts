@@ -1,5 +1,5 @@
 import { env, SELF, fetchMock } from 'cloudflare:test';
-import { describe, it, expect, beforeEach, vi, Mock, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 
 // Typed Request for Cloudflare Worker
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
@@ -60,7 +60,7 @@ describe('Cloudflare', () => {
 			expect(await env.CONFIG.get(CONFIG_KEY, 'json')).toEqual(parsedConfig);
 		});
 
-		it('failed to load from github', async () => {
+		it('failed to load config from github', async () => {
 			env.CONFIG.put(
 				CONFIG_KEY,
 				JSON.stringify({
@@ -76,101 +76,146 @@ describe('Cloudflare', () => {
 		});
 	});
 
-	// describe('Proxying Workload Requests', () => {
-	// 	beforeEach(() => {
-	// 		// Reset hostsConfig and stub fetch
-	// 		hostsConfig.workload1 = {
-	// 			provider: 'example',
-	// 			host: 'example.com',
-	// 			type: 'web',
-	// 		};
-	// 		vi.stubGlobal('fetch', vi.fn());
-	// 	});
+	describe('GetUserAndHistory', () => {
+		const defaultUser = {
+			user: 'unknown user',
+			history: ['insert identity history0 here', 'insert identity history1 here'],
+		};
+		beforeAll(async () => {
+			// Enable outbound request mocking...
+			fetchMock.activate();
+			// ...and throw errors if an outbound request isn't mocked
+			fetchMock.disableNetConnect();
+			await env.CONFIG.put(
+				CONFIG_KEY,
+				JSON.stringify({
+					oldWorkload: { provider: 'example', host: 'example.com', type: 'web' },
+				})
+			);
+		});
 
-	// 	it('forwards GET requests with query parameters', async () => {
-	// 		// Arrange
-	// 		const mockResponse = new Response(JSON.stringify({ success: true }), {
-	// 			status: 200,
-	// 			headers: { 'Content-Type': 'application/json' },
-	// 		});
-	// 		(fetch as unknown as vi.Mock).mockResolvedValueOnce(mockResponse);
+		afterEach(() => fetchMock.assertNoPendingInterceptors());
 
-	// 		const ctx = createExecutionContext();
-	// 		const request = new IncomingRequest('https://example.com/workload1/path?foo=bar', { method: 'GET' });
+		it('should have a catch-all route that returns user and history information', async () => {
+			const response = await SELF.fetch('https://example.com/blahblah');
+			expect(response.status).toBe(200);
+			const json = await response.json();
+			expect(json).toEqual(defaultUser);
+		});
+		it('should return user and history information for the root path', async () => {
+			const response = await SELF.fetch('https://example.com/');
+			expect(response.status).toBe(200);
+			const json = await response.json();
+			expect(json).toEqual(defaultUser);
+		});
+	});
 
-	// 		// Act
-	// 		const response = await worker.fetch(request, env, ctx);
-	// 		await waitOnExecutionContext(ctx);
+	describe('forwardRequest', () => {
+		beforeAll(async () => {
+			// Enable outbound request mocking...
+			fetchMock.activate();
+			// ...and throw errors if an outbound request isn't mocked
+			fetchMock.disableNetConnect();
+			await env.CONFIG.put(
+				CONFIG_KEY,
+				JSON.stringify({
+					workload1: { provider: 'example', host: 'foo.com', type: 'web' },
+				})
+			);
+		});
 
-	// 		// Assert
-	// 		expect(fetch).toHaveBeenCalledWith('https://example.com/path?foo=bar', {
-	// 			method: 'GET',
-	// 			headers: expect.objectContaining({ host: 'example.com' }),
-	// 		});
-	// 		expect(response.status).toBe(200);
-	// 		expect(await response.json()).toEqual({ success: true });
-	// 	});
+		afterEach(() => fetchMock.assertNoPendingInterceptors());
 
-	// 	it('forwards POST requests with JSON body', async () => {
-	// 		// Arrange
-	// 		const payload = { data: 'test' };
-	// 		const mockResponse = new Response(JSON.stringify({ ok: true }), {
-	// 			status: 201,
-	// 			headers: { 'Content-Type': 'application/json' },
-	// 		});
-	// 		(fetch as unknown as vi.Mock).mockResolvedValueOnce(mockResponse);
+		it('should forward requests to the correct host', async () => {
+			fetchMock.get('https://foo.com').intercept({ method: 'GET', path: `path?param=value` }).reply(200);
+			const response = await SELF.fetch('https://example.com/workload1/path?param=value', {
+				headers: { 'content-type': 'application/json' },
+			});
+			expect(response.status).toBe(200);
+		});
 
-	// 		const ctx = createExecutionContext();
-	// 		const request = new IncomingRequest('https://example.com/workload1/path', {
-	// 			method: 'POST',
-	// 			headers: { 'Content-Type': 'application/json' },
-	// 			body: JSON.stringify(payload),
-	// 		});
+		it('should forward requests without query parameters', async () => {
+			fetchMock.get('https://foo.com').intercept({ method: 'GET', path: `/path` }).reply(200);
+			const response = await SELF.fetch('https://example.com/workload1/path', {
+				headers: { 'content-type': 'application/json' },
+			});
+			expect(response.status).toBe(200);
+		});
 
-	// 		// Act
-	// 		const response = await worker.fetch(request, env, ctx);
-	// 		await waitOnExecutionContext(ctx);
+		it('should handle requests without a remaining path', async () => {
+			fetchMock.get('https://foo.com').intercept({ method: 'GET', path: `/` }).reply(200);
+			const response = await SELF.fetch('https://example.com/workload1/', {
+				headers: { 'content-type': 'application/json' },
+			});
+			expect(response.status).toBe(200);
+		});
 
-	// 		// Assert
-	// 		expect(fetch).toHaveBeenCalledWith('https://example.com/path', {
-	// 			method: 'POST',
-	// 			headers: expect.objectContaining({
-	// 				host: 'example.com',
-	// 				'Content-Type': 'application/json',
-	// 			}),
-	// 			body: JSON.stringify(payload),
-	// 		});
-	// 		expect(response.status).toBe(201);
-	// 		expect(await response.json()).toEqual({ ok: true });
-	// 	});
+		it('should handle POST requests with body data', async () => {
+			const body = JSON.stringify({ data: 'test' });
+			fetchMock.get('https://foo.com').intercept({ method: 'POST', path: `/path`, body: body }).reply(200);
+			const response = await SELF.fetch('https://example.com/workload1/path', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: body,
+			});
+			expect(response.status).toBe(200);
+		});
 
-	// 	it('forwards DELETE requests without body', async () => {
-	// 		// Arrange
-	// 		const mockResponse = new Response(null, { status: 204 });
-	// 		(fetch as unknown as vi.Mock).mockResolvedValueOnce(mockResponse);
+		it('should handle PUT requests with body data', async () => {
+			const body = JSON.stringify({ data: 'test' });
+			fetchMock.get('https://foo.com').intercept({ method: 'PUT', path: `/path`, body: body }).reply(200);
+			const response = await SELF.fetch('https://example.com/workload1/path', {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: body,
+			});
+			expect(response.status).toBe(200);
+		});
 
-	// 		const ctx = createExecutionContext();
-	// 		const request = new IncomingRequest('https://example.com/workload1/path', {
-	// 			method: 'DELETE',
-	// 		});
+		it('should handle PATCH requests with body data', async () => {
+			const body = JSON.stringify({ data: 'test' });
+			fetchMock.get('https://foo.com').intercept({ method: 'PATCH', path: `/path`, body: body }).reply(200);
+			const response = await SELF.fetch('https://example.com/workload1/path', {
+				method: 'PATCH',
+				headers: { 'content-type': 'application/json' },
+				body: body,
+			});
+			expect(response.status).toBe(200);
+		});
 
-	// 		// Act
-	// 		const response = await worker.fetch(request, env, ctx);
-	// 		await waitOnExecutionContext(ctx);
+		it('should handle DELETE requests', async () => {
+			fetchMock.get('https://foo.com').intercept({ method: 'DELETE', path: `/path` }).reply(204);
+			const response = await SELF.fetch('https://example.com/workload1/path', {
+				method: 'DELETE',
+				headers: { 'content-type': 'application/json' },
+				body: undefined,
+			});
+			expect(response.status).toBe(204);
+		});
 
-	// 		// Assert
-	// 		expect(fetch).toHaveBeenCalledWith('https://example.com/path', {
-	// 			method: 'DELETE',
-	// 			headers: expect.objectContaining({ host: 'example.com' }),
-	// 		});
-	// 		expect(response.status).toBe(204);
-	// 	});
-	// });
+		it('should handle errors during request forwarding', async () => {
+			fetchMock.get('https://foo.com').intercept({ method: 'GET', path: `/path` }).replyWithError(new Error('Network Error'));
+			const response = await SELF.fetch('https://example.com/workload1/path', {
+				headers: { 'content-type': 'application/json' },
+			});
+			expect(response.status).toBe(500);
+			expect(await response.text()).toBe('Error forwarding request to remote host');
+		});
 
-	// describe('Integration Tests', () => {
-	// 	it('responds to a real fetch (integration style)', async () => {
-	// 		const response = await SELF.fetch('https://example.com/config');
-	// 		expect(response.status).toBe(200);
-	// 	});
-	// });
+		it('should handle requests with query parameters', async () => {
+			const u = new URL('https://example.com/workload1/path');
+			u.searchParams.append('param', 'value');
+			u.searchParams.append('param2', 'test1');
+			u.searchParams.append('param2', 'test2');
+			u.searchParams.append('param3', 'true');
+			fetchMock
+				.get('https://foo.com')
+				.intercept({ method: 'GET', path: `path?${u.searchParams.toString()}` })
+				.reply(200);
+			const response = await SELF.fetch(u, {
+				headers: { 'content-type': 'application/json' },
+			});
+			expect(response.status).toBe(200);
+		});
+	});
 });

@@ -32,7 +32,7 @@ export interface HostsConfig {
 }
 
 // Define type for provider functions
-type ProviderFunction = (c: Context<{ Bindings: Bindings }>) => Promise<Response>;
+type ProviderFunction = (c: Context<{ Bindings: Bindings }>, config: HostsConfig) => Promise<Response>;
 
 // Define type for providers object
 interface ProviderMap {
@@ -40,8 +40,8 @@ interface ProviderMap {
 }
 
 const Providers: ProviderMap = {
-	example: async (c: Context<{ Bindings: Bindings }>) => {
-		return await forwardRequest(c);
+	example: async (c: Context<{ Bindings: Bindings }>, config: HostsConfig) => {
+		return await forwardRequest(c, config);
 	},
 };
 
@@ -63,8 +63,51 @@ const refreshConfig = async (env: Env) => {
 	return jsonData;
 };
 
-async function forwardRequest(c: Context<{ Bindings: Bindings }>) {
-	return new Response('heyo');
+async function forwardRequest(c: Context<{ Bindings: Bindings }>, config: HostsConfig) {
+	try {
+		const u = new URL(c.req.url);
+		// Get the original URL and extract the workload name from the path
+		const pathParts = c.req.path.split('/').filter(Boolean);
+
+		if (pathParts.length === 0) {
+			return c.text('Invalid request path', { status: 400 });
+		}
+
+		const workloadName = pathParts[0];
+		// Use the provided configuration
+		const workload = config[workloadName];
+
+		if (!workload) {
+			return c.text(`Workload ${workloadName} not found`, { status: 404 });
+		}
+
+		// Remove the workload name from the path
+		const remainingPath = pathParts.slice(1).join('/');
+
+		// Construct the target URL
+		let targetUrl = `https://${workload.host}${remainingPath ? '/' + remainingPath : ''}`;
+
+		// Forward query parameters if they exist
+		const query = u.searchParams.toString();
+		targetUrl = `${targetUrl}?${query}`;
+
+		console.log(`Forwarding request to: ${targetUrl}`);
+
+		const resp = await fetch(targetUrl, {
+			method: c.req.method || 'GET',
+			headers: {
+				...c.req.raw.headers,
+				host: workload.host,
+			},
+			body: ['POST', 'PUT', 'PATCH'].includes(c.req.method?.toUpperCase() || '') ? await c.req.arrayBuffer() : undefined,
+		});
+
+		// Forward the response back to the client
+		return resp;
+	} catch (error) {
+		console.error('Error forwarding request:', error);
+		return c.text('Error forwarding request to remote host', { status: 500 });
+	}
 }
 
 async function handleRequest(request: Request<unknown, CfProperties<unknown>>, env: Env, ctx: any) {
@@ -85,12 +128,12 @@ async function handleRequest(request: Request<unknown, CfProperties<unknown>>, e
 		const workload = workloadConfig[workloadName];
 		const provider = Providers[workload.provider];
 		if (provider) {
-			app.get(`/${workloadName}`, provider);
-			app.get(`/${workloadName}/*`, provider);
-			app.post(`/${workloadName}/*`, provider);
-			app.put(`/${workloadName}/*`, provider);
-			app.delete(`/${workloadName}/*`, provider);
-			app.patch(`/${workloadName}/*`, provider);
+			app.get(`/${workloadName}`, (c) => provider(c, workloadConfig));
+			app.get(`/${workloadName}/*`, (c) => provider(c, workloadConfig));
+			app.post(`/${workloadName}/*`, (c) => provider(c, workloadConfig));
+			app.put(`/${workloadName}/*`, (c) => provider(c, workloadConfig));
+			app.delete(`/${workloadName}/*`, (c) => provider(c, workloadConfig));
+			app.patch(`/${workloadName}/*`, (c) => provider(c, workloadConfig));
 			console.log(`Routes registered for ${workloadName} with provider: ${workload.provider}`);
 		} else {
 			console.error(`Provider '${workload.provider}' not found for workload: ${workloadName}`);
