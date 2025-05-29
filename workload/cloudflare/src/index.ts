@@ -17,9 +17,10 @@ import { parse } from 'yaml';
 
 type Bindings = {
 	CONFIG: KVNamespace;
+	KEY_PREFIX: 'default' | 'james' | 'alex' | 'prod';
 };
 
-const WORKLOAD_CONFIG_KEY = 'workload_config';
+const getConfigKey = (e: Env) => `${e.KEY_PREFIX}_workload_config`;
 
 export interface Workload {
 	provider: string;
@@ -59,7 +60,7 @@ const refreshConfig = async (env: Env) => {
 	}
 	const yamlData = await resp.text();
 	const jsonData = await parse(yamlData);
-	await env.CONFIG.put(WORKLOAD_CONFIG_KEY, JSON.stringify(jsonData));
+	await env.CONFIG.put(getConfigKey(env), JSON.stringify(jsonData));
 	return jsonData;
 };
 
@@ -111,7 +112,7 @@ async function forwardRequest(c: Context<{ Bindings: Bindings }>, config: HostsC
 }
 
 async function handleRequest(request: Request<unknown, CfProperties<unknown>>, env: Env, ctx: any) {
-	let workloadConfig: HostsConfig | null = await env.CONFIG.get(WORKLOAD_CONFIG_KEY, 'json');
+	let workloadConfig: HostsConfig | null = await env.CONFIG.get(getConfigKey(env), 'json');
 	if (!workloadConfig) {
 		workloadConfig = await refreshConfig(env);
 	}

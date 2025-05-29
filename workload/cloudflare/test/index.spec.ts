@@ -22,6 +22,7 @@ const CONFIG_KEY = 'workload_config';
 describe('Cloudflare', () => {
 	describe('Config Endpoint', () => {
 		beforeAll(() => {
+			env.KEY_PREFIX = 'default';
 			// Enable outbound request mocking...
 			fetchMock.activate();
 			// ...and throw errors if an outbound request isn't mocked
@@ -41,12 +42,12 @@ describe('Cloudflare', () => {
 
 			const json = await response.json();
 			expect(json).toEqual(parsedConfig);
-			expect(await env.CONFIG.get(CONFIG_KEY, 'json')).toEqual(parsedConfig);
+			expect(await env.CONFIG.get(`${env.KEY_PREFIX}_${CONFIG_KEY}`, 'json')).toEqual(parsedConfig);
 		});
 
 		it('GET /config loads existing config then updates', async () => {
 			env.CONFIG.put(
-				CONFIG_KEY,
+				`${env.KEY_PREFIX}_${CONFIG_KEY}`,
 				JSON.stringify({
 					oldWorkload: { provider: 'example', host: 'example.com', type: 'web' },
 				})
@@ -57,12 +58,12 @@ describe('Cloudflare', () => {
 
 			const json = await response.json();
 			expect(json).toEqual(parsedConfig);
-			expect(await env.CONFIG.get(CONFIG_KEY, 'json')).toEqual(parsedConfig);
+			expect(await env.CONFIG.get(`${env.KEY_PREFIX}_${CONFIG_KEY}`, 'json')).toEqual(parsedConfig);
 		});
 
 		it('failed to load config from github', async () => {
 			env.CONFIG.put(
-				CONFIG_KEY,
+				`${env.KEY_PREFIX}_${CONFIG_KEY}`,
 				JSON.stringify({
 					oldWorkload: { provider: 'example', host: 'example.com', type: 'web' },
 				})
@@ -82,12 +83,13 @@ describe('Cloudflare', () => {
 			history: ['insert identity history0 here', 'insert identity history1 here'],
 		};
 		beforeAll(async () => {
+			env.KEY_PREFIX = 'default';
 			// Enable outbound request mocking...
 			fetchMock.activate();
 			// ...and throw errors if an outbound request isn't mocked
 			fetchMock.disableNetConnect();
 			await env.CONFIG.put(
-				CONFIG_KEY,
+				`${env.KEY_PREFIX}_${CONFIG_KEY}`,
 				JSON.stringify({
 					oldWorkload: { provider: 'example', host: 'example.com', type: 'web' },
 				})
@@ -112,12 +114,13 @@ describe('Cloudflare', () => {
 
 	describe('forwardRequest', () => {
 		beforeAll(async () => {
+			env.KEY_PREFIX = 'default';
 			// Enable outbound request mocking...
 			fetchMock.activate();
 			// ...and throw errors if an outbound request isn't mocked
 			fetchMock.disableNetConnect();
 			await env.CONFIG.put(
-				CONFIG_KEY,
+				`${env.KEY_PREFIX}_${CONFIG_KEY}`,
 				JSON.stringify({
 					workload1: { provider: 'example', host: 'foo.com', type: 'web' },
 				})
