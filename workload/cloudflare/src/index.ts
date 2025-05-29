@@ -11,6 +11,8 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 import { Context, Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { logger } from 'hono/logger';
 import { parse } from 'yaml';
 
 type Bindings = {
@@ -52,6 +54,9 @@ const getUserAndHistory = async (c: Context<{ Bindings: Bindings }>) => {
 
 const refreshConfig = async (env: Env) => {
 	const resp = await fetch('https://raw.githubusercontent.com/co-cddo/zerotrust-cloud-identity/refs/heads/main/shared_config/hosts.yaml');
+	if (resp.status != 200) {
+		throw new HTTPException(500, { message: 'failed to get config from github' });
+	}
 	const yamlData = await resp.text();
 	const jsonData = await parse(yamlData);
 	await env.CONFIG.put(WORKLOAD_CONFIG_KEY, JSON.stringify(jsonData));
@@ -68,6 +73,13 @@ async function handleRequest(request: Request<unknown, CfProperties<unknown>>, e
 		workloadConfig = await refreshConfig(env);
 	}
 	const app = new Hono<{ Bindings: Bindings }>();
+	app.use(logger());
+	app.onError((err, c) => {
+		if (err instanceof HTTPException) {
+			return err.getResponse();
+		}
+		return c.json({ err: 'something went wrong' }, { status: 500 });
+	});
 	for (const workloadName in workloadConfig) {
 		console.log(`Setting up routes for workload: ${workloadName}`);
 		const workload = workloadConfig[workloadName];
@@ -90,7 +102,7 @@ async function handleRequest(request: Request<unknown, CfProperties<unknown>>, e
 		return c.json(config);
 	});
 	app.get('*', (c) => getUserAndHistory(c));
-	return app.fetch(request);
+	return app.fetch(request, env);
 }
 
 export default {
