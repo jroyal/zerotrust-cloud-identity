@@ -13,7 +13,7 @@
 import { Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
-import { verifyToken } from './jwt';
+import { parseJWT, verifyToken, signJWT } from './jwt';
 import { getCookie } from 'hono/cookie';
 import { parse } from 'yaml';
 
@@ -69,6 +69,22 @@ const refreshConfig = async (env: Env) => {
 	return jsonData;
 };
 
+async function validateAndGenerateNewToken(token: string, env: Env, host: string) {
+	if (!token) {
+		throw new Error("didn't get a token");
+	}
+	const tokenParts = parseJWT(token);
+	const claims = await verifyToken(env, token);
+
+	const newWorkloadSig = [`${host}:${tokenParts.signature}`];
+	if (claims.workloads) {
+		claims.workloads = claims.workloads.concat(newWorkloadSig);
+	} else {
+		claims.workloads = newWorkloadSig;
+	}
+	return await signJWT(env, claims);
+}
+
 async function forwardRequest(c: Context<{ Bindings: Bindings }>, config: HostsConfig) {
 	try {
 		const u = new URL(c.req.url);
@@ -99,10 +115,13 @@ async function forwardRequest(c: Context<{ Bindings: Bindings }>, config: HostsC
 
 		console.log(`Forwarding request to: ${targetUrl}`);
 
+		let ogHeaders: any = { ...c.req.raw.headers };
+		const cf_cookie = getCookie(c, 'CF_Authorization');
+		ogHeaders['CF_Authorization'] = await validateAndGenerateNewToken(cf_cookie || '', c.env, workload.host);
 		const resp = await fetch(targetUrl, {
 			method: c.req.method || 'GET',
 			headers: {
-				...c.req.raw.headers,
+				...ogHeaders,
 				host: workload.host,
 			},
 			body: ['POST', 'PUT', 'PATCH'].includes(c.req.method?.toUpperCase() || '') ? await c.req.arrayBuffer() : undefined,
