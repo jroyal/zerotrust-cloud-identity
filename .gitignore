@@ -7,3 +7,5 @@ e2e_test/videos/*
 *.tfstate
 *.tfstate.*
 *.terraform/*
+.terraform
+.terraform.lock.hcl

@@ -1,9 +1,14 @@
 workload1: 
-  provider: example
-  host: example.com
+  provider: cloudflare
+  host: zt-identity-hackathon-james.accessteam.workers.dev
   type: workload
   
 workload2: 
-  provider: example
-  host: workload.example.com
+  provider: cloudflare
+  host: zt-identity-hackathon-alex.accessteam.workers.dev
+  type: workload
+
+workload3: 
+  provider: cloudflare
+  host: zt-identity-hackathon-production.accessteam.workers.dev
   type: workload
