@@ -13,6 +13,8 @@
 import { Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
+import { verifyToken } from './jwt';
+import { getCookie } from 'hono/cookie';
 import { parse } from 'yaml';
 
 type Bindings = {
@@ -47,8 +49,11 @@ const Providers: ProviderMap = {
 };
 
 const getUserAndHistory = async (c: Context<{ Bindings: Bindings }>) => {
+	// get the identity from the JWT
+	const cf_cookie = getCookie(c, 'CF_Authorization');
+	const claims = await verifyToken(c.env, cf_cookie || '');
 	return c.json({
-		user: 'unknown user',
+		user: claims.email || 'unknown user',
 		history: ['insert identity history0 here', 'insert identity history1 here'],
 	});
 };
@@ -122,7 +127,8 @@ async function handleRequest(request: Request<unknown, CfProperties<unknown>>, e
 		if (err instanceof HTTPException) {
 			return err.getResponse();
 		}
-		return c.json({ err: 'something went wrong' }, { status: 500 });
+		console.log(err);
+		return c.json({ message: 'something went wrong', err: err.toString() }, { status: 500 });
 	});
 	for (const workloadName in workloadConfig) {
 		console.log(`Setting up routes for workload: ${workloadName}`);
